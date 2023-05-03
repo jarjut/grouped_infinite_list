@@ -1,7 +1,7 @@
 name: grouped_infinite_list
-description: Grouped Infinite List
+description: Grouped Infinite ListView with items that can be scrolled infinitely in both directions.
 version: 0.1.0
-publish_to: none
+repository: https://github.com/jarjut/grouped_infinite_list
 
 environment:
   sdk: ">=2.18.0 <3.0.0"

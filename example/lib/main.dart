@@ -73,7 +73,6 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       body: GroupedInfiniteList(
         controller: _scrollController,
-        reverse: true,
         positiveItems: positiveItems,
         negativeItems: negativeItems,
         groupBy: (item) => item.dateOnly,

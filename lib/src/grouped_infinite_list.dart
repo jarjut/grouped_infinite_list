@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 /// {@template grouped_infinite_list}
@@ -22,6 +23,16 @@ class GroupedInfiniteList<T, G> extends StatefulWidget {
     this.reverse = false,
     this.groupComparator,
     this.itemComparator,
+    this.anchor = 0.0,
+    this.cacheExtent,
+    this.clipBehavior = Clip.hardEdge,
+    this.dragStartBehavior = DragStartBehavior.start,
+    this.keyboardDismissBehavior = ScrollViewKeyboardDismissBehavior.manual,
+    this.physics,
+    this.primary,
+    this.restorationId,
+    this.scrollBehavior,
+    this.scrollDirection = Axis.vertical,
   });
 
   /// List of items
@@ -65,6 +76,47 @@ class GroupedInfiniteList<T, G> extends StatefulWidget {
 
   /// {@macro flutter.widgets.scroll_view.reverse}
   final bool reverse;
+
+  /// {@macro flutter.widgets.scroll_view.anchor}
+  final double anchor;
+
+  /// {@macro flutter.rendering.RenderViewportBase.cacheExtent}
+  final double? cacheExtent;
+
+  /// {@macro flutter.material.Material.clipBehavior}
+  ///
+  /// Defaults to [Clip.hardEdge].
+  final Clip clipBehavior;
+
+  /// {@macro flutter.widgets.scrollable.dragStartBehavior}
+  final DragStartBehavior dragStartBehavior;
+
+  /// {@macro flutter.widgets.scroll_view.keyboardDismissBehavior}
+  final ScrollViewKeyboardDismissBehavior keyboardDismissBehavior;
+
+  /// {@macro flutter.widgets.scroll_view.physics}
+  ///
+  /// If an explicit [ScrollBehavior] is provided to [scrollBehavior], the
+  /// [ScrollPhysics] provided by that behavior will take precedence after
+  /// [physics].
+  final ScrollPhysics? physics;
+
+  /// {@macro flutter.widgets.scroll_view.primary}
+  final bool? primary;
+
+  /// {@macro flutter.widgets.scrollable.restorationId}
+  final String? restorationId;
+
+  /// {@macro flutter.widgets.shadow.scrollBehavior}
+  ///
+  /// [ScrollBehavior]s also provide [ScrollPhysics]. If an explicit
+  /// [ScrollPhysics] is provided in [physics], it will take precedence,
+  /// followed by [scrollBehavior], and then the inherited ancestor
+  /// [ScrollBehavior].
+  final ScrollBehavior? scrollBehavior;
+
+  /// {@macro flutter.widgets.scroll_view.scrollDirection}
+  final Axis scrollDirection;
 
   /// Center list key
   Key get _centerKey => const ValueKey('center-list-key');
@@ -147,14 +199,15 @@ class _GroupedInfiniteListState<T, G> extends State<GroupedInfiniteList<T, G>> {
     final isSeparator = reverse ? index.isOdd : index.isEven;
 
     if (!reverse) {
-      final otherListNotEmpty = isNegative
-          ? widget.positiveItems.isNotEmpty
-          : widget.negativeItems.isNotEmpty;
+      final notEmptyList =
+          widget.positiveItems.isNotEmpty && widget.negativeItems.isNotEmpty;
 
-      if (index == 0 && otherListNotEmpty) {
-        final posGroup = widget.groupBy(_positiveItems[0]);
-        final negGroup = widget.groupBy(_negativeItems[0]);
-        if (posGroup != negGroup) {
+      // Check if we need to add group separator between positive and negative
+      // items, show separator if they are not in the same group
+      if (index == 0 && notEmptyList) {
+        final firstPositiveGroup = widget.groupBy(_positiveItems[0]);
+        final firstNegativeGroup = widget.groupBy(_negativeItems[0]);
+        if (firstPositiveGroup != firstNegativeGroup) {
           return widget.groupSeparatorBuilder(items[0]);
         } else {
           return widget.separator;
@@ -162,11 +215,13 @@ class _GroupedInfiniteListState<T, G> extends State<GroupedInfiniteList<T, G>> {
       }
     }
 
+    // Show group separator on top of the list
     if (index == hiddenIndex) {
       return widget.groupSeparatorBuilder(items[actualIndex]);
     }
 
     if (isSeparator) {
+      // Check if we need to add group separator between items
       final current = widget.groupBy(items[actualIndex]);
       final previous = widget.groupBy(items[actualIndex + (reverse ? 1 : -1)]);
       if (current != previous) {
@@ -174,6 +229,8 @@ class _GroupedInfiniteListState<T, G> extends State<GroupedInfiniteList<T, G>> {
       }
       return widget.separator;
     }
+
+    // Item builder
     final item = items[actualIndex];
     return widget.itemBuilder(context, item);
   }
@@ -181,9 +238,20 @@ class _GroupedInfiniteListState<T, G> extends State<GroupedInfiniteList<T, G>> {
   @override
   Widget build(BuildContext context) {
     return CustomScrollView(
+      key: widget.key,
       controller: widget.controller,
       center: widget._centerKey,
       reverse: widget.reverse,
+      anchor: widget.anchor,
+      cacheExtent: widget.cacheExtent,
+      clipBehavior: widget.clipBehavior,
+      dragStartBehavior: widget.dragStartBehavior,
+      keyboardDismissBehavior: widget.keyboardDismissBehavior,
+      physics: widget.physics,
+      primary: widget.primary,
+      restorationId: widget.restorationId,
+      scrollBehavior: widget.scrollBehavior,
+      scrollDirection: widget.scrollDirection,
       slivers: [
         if (widget.negativeSuffix != null)
           SliverToBoxAdapter(

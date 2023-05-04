@@ -67,24 +67,40 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final offset = MediaQuery.of(context).viewPadding.top + kToolbarHeight;
+
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
+        backgroundColor:
+            Theme.of(context).colorScheme.primary.withOpacity(0.85),
         title: const Text('Grouped Infinite List'),
       ),
       body: GroupedInfiniteList(
         controller: _scrollController,
         positiveItems: positiveItems,
         negativeItems: negativeItems,
+        useStickyGroupSeparators: true,
         groupBy: (item) => item.dateOnly,
+        stickyHeaderPositionOffset: offset,
+        groupSeparatorPadding: const EdgeInsets.symmetric(vertical: 8.0),
         groupSeparatorBuilder: (item) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
+          return Container(
+            alignment: Alignment.center,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                vertical: 4.0,
+                horizontal: 12.0,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Text(
                 DateFormat('dd MMMM yyyy').format(item.date),
-                style: const TextStyle(
-                  color: Colors.grey,
-                  fontWeight: FontWeight.bold,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -146,8 +162,7 @@ class _MyHomePageState extends State<MyHomePage> {
     final int startIndex = negativeItems.length;
     final ChatPost? lastItem =
         negativeItems.isNotEmpty ? negativeItems.last : null;
-    final date =
-        lastItem?.date ?? DateTime.now().subtract(const Duration(days: 1));
+    final date = lastItem?.date ?? DateTime.now();
 
     negativeItems.addAll(
       List<ChatPost>.generate(

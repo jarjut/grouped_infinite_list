@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:collection';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -15,6 +18,7 @@ class GroupedInfiniteList<T, G> extends StatefulWidget {
     required this.itemBuilder,
     required this.groupBy,
     required this.groupSeparatorBuilder,
+    EdgeInsetsGeometry? groupSeparatorPadding,
     this.negativeItems = const [],
     this.separator = const SizedBox.shrink(),
     this.controller,
@@ -33,7 +37,11 @@ class GroupedInfiniteList<T, G> extends StatefulWidget {
     this.restorationId,
     this.scrollBehavior,
     this.scrollDirection = Axis.vertical,
-  });
+    this.addAutomaticKeepAlives = true,
+    this.sort = true,
+    this.useStickyGroupSeparators = false,
+    this.stickyHeaderPositionOffset = 0.0,
+  }) : groupSeparatorPadding = groupSeparatorPadding ?? EdgeInsets.zero;
 
   /// List of items
   final List<T> positiveItems;
@@ -50,6 +58,9 @@ class GroupedInfiniteList<T, G> extends StatefulWidget {
   /// Group separator builder
   final Widget Function(T item) groupSeparatorBuilder;
 
+  /// Group separator padding
+  final EdgeInsetsGeometry groupSeparatorPadding;
+
   /// Can be used to define a custom sorting for the groups.
   ///
   /// If not set groups will be sorted with their natural sorting order or their
@@ -65,7 +76,7 @@ class GroupedInfiniteList<T, G> extends StatefulWidget {
   /// Separator
   final Widget separator;
 
-  /// Scroll controller
+  /// {@macro flutter.widgets.scroll_view.controller}
   final ScrollController? controller;
 
   /// Suffix Widget, mostly used for list loading indicator
@@ -118,6 +129,33 @@ class GroupedInfiniteList<T, G> extends StatefulWidget {
   /// {@macro flutter.widgets.scroll_view.scrollDirection}
   final Axis scrollDirection;
 
+  /// Whether to wrap each child in an [AutomaticKeepAlive].
+  ///
+  /// Typically, children in lazy list are wrapped in [AutomaticKeepAlive]
+  /// widgets so that children can use [KeepAliveNotification]s to preserve
+  /// their state when they would otherwise be garbage collected off-screen.
+  ///
+  /// Defaults to true.
+  final bool addAutomaticKeepAlives;
+
+  /// Whether the items will be sorted or not. If not it must be done
+  /// manually.
+  ///
+  /// Defauts to `true`.
+  final bool sort;
+
+  /// When set to `true` the group header of the current visible group will
+  /// stick on top.
+  final bool useStickyGroupSeparators;
+
+  /// Used to calculate sticky header position offset
+  ///
+  /// Usually used if you need your list scroll behind appbar
+  /// (Scaffold extendBodyBehindAppBar: true)
+  ///
+  /// Defaults to `0.0`
+  final double stickyHeaderPositionOffset;
+
   /// Center list key
   Key get _centerKey => const ValueKey('center-list-key');
 
@@ -127,39 +165,140 @@ class GroupedInfiniteList<T, G> extends StatefulWidget {
 }
 
 class _GroupedInfiniteListState<T, G> extends State<GroupedInfiniteList<T, G>> {
+  final _stickyGroupIndexStreamController = StreamController<int>();
+  late final ScrollController _controller;
   late List<T> _positiveItems;
   late List<T> _negativeItems;
+
+  bool get _isEmpty => _positiveItems.isEmpty && _negativeItems.isEmpty;
+
+  final LinkedHashMap<int, GlobalKey> _keys = LinkedHashMap();
+  final GlobalKey _key = GlobalKey();
+  GlobalKey? _groupHeaderKey;
+  int _topElementIndex = 0;
+  RenderBox? _listBox;
+  RenderBox? _headerBox;
 
   @override
   void initState() {
     super.initState();
-    init();
+    _sortItems();
+    _controller = widget.controller ?? ScrollController();
+    _controller.addListener(_scrollListener);
   }
 
   @override
   void didUpdateWidget(covariant GroupedInfiniteList<T, G> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    init();
+    _sortItems();
   }
 
-  void init() {
-    sortItems();
+  @override
+  void dispose() {
+    _controller.removeListener(_scrollListener);
+    if (widget.controller == null) {
+      _controller.dispose();
+    }
+    _stickyGroupIndexStreamController.close();
+    super.dispose();
   }
 
-  void sortItems() {
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      key: _key,
+      alignment: Alignment.topCenter,
+      children: [
+        CustomScrollView(
+          controller: widget.controller,
+          center: widget._centerKey,
+          reverse: widget.reverse,
+          anchor: widget.anchor,
+          cacheExtent: widget.cacheExtent,
+          clipBehavior: widget.clipBehavior,
+          dragStartBehavior: widget.dragStartBehavior,
+          keyboardDismissBehavior: widget.keyboardDismissBehavior,
+          physics: widget.physics,
+          primary: widget.primary,
+          restorationId: widget.restorationId,
+          scrollBehavior: widget.scrollBehavior,
+          scrollDirection: widget.scrollDirection,
+          slivers: [
+            if (widget.negativeSuffix != null)
+              SliverToBoxAdapter(
+                child: widget.negativeSuffix,
+              ),
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  return _itemBuilder(
+                    context: context,
+                    items: _negativeItems,
+                    index: index,
+                    isNegative: true,
+                  );
+                },
+                childCount: _negativeItems.length * 2,
+                addAutomaticKeepAlives: widget.addAutomaticKeepAlives,
+              ),
+            ),
+            SliverList(
+              key: widget._centerKey,
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  return _itemBuilder(
+                    context: context,
+                    items: _positiveItems,
+                    index: index,
+                    isNegative: false,
+                  );
+                },
+                childCount: _positiveItems.length * 2,
+                addAutomaticKeepAlives: widget.addAutomaticKeepAlives,
+              ),
+            ),
+            if (widget.suffix != null)
+              SliverToBoxAdapter(
+                child: widget.suffix,
+              ),
+          ],
+        ),
+        Positioned(
+          top: widget.stickyHeaderPositionOffset,
+          child: StreamBuilder<int>(
+            stream: _stickyGroupIndexStreamController.stream,
+            initialData: _topElementIndex,
+            builder: (context, snapshot) {
+              final index = snapshot.data;
+              if (index != null) {
+                return _stickyHeaderBuilder(index);
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// sort both items list
+  void _sortItems() {
     _positiveItems = List.of(widget.positiveItems);
     _negativeItems = List.of(widget.negativeItems);
+
+    // If sort is false, skip sorting
+    if (!widget.sort) return;
     // Sort items
     if (_positiveItems.isNotEmpty) {
-      _positiveItems.sort(sorter);
+      _positiveItems.sort(_sorter);
     }
     // Sort negative items in reverse order
     if (_negativeItems.isNotEmpty) {
-      _negativeItems.sort((b, a) => sorter(a, b));
+      _negativeItems.sort((b, a) => _sorter(a, b));
     }
   }
 
-  int sorter(T a, T b) {
+  int _sorter(T a, T b) {
     var compareResult = 0;
     // Group
     if (widget.groupComparator != null) {
@@ -185,6 +324,13 @@ class _GroupedInfiniteListState<T, G> extends State<GroupedInfiniteList<T, G>> {
     return compareResult;
   }
 
+  Widget _groupSeparatorBuilder(T item) {
+    return Padding(
+      padding: widget.groupSeparatorPadding,
+      child: widget.groupSeparatorBuilder(item),
+    );
+  }
+
   // Item builder for [SliverChildBuilderDelegate]
   Widget _itemBuilder({
     required BuildContext context,
@@ -199,16 +345,13 @@ class _GroupedInfiniteListState<T, G> extends State<GroupedInfiniteList<T, G>> {
     final isSeparator = reverse ? index.isOdd : index.isEven;
 
     if (!reverse) {
-      final notEmptyList =
-          widget.positiveItems.isNotEmpty && widget.negativeItems.isNotEmpty;
-
       // Check if we need to add group separator between positive and negative
       // items, show separator if they are not in the same group
-      if (index == 0 && notEmptyList) {
+      if (index == 0 && !_isEmpty) {
         final firstPositiveGroup = widget.groupBy(_positiveItems[0]);
         final firstNegativeGroup = widget.groupBy(_negativeItems[0]);
         if (firstPositiveGroup != firstNegativeGroup) {
-          return widget.groupSeparatorBuilder(items[0]);
+          return _groupSeparatorBuilder(items[0]);
         } else {
           return widget.separator;
         }
@@ -217,7 +360,10 @@ class _GroupedInfiniteListState<T, G> extends State<GroupedInfiniteList<T, G>> {
 
     // Show group separator on top of the list
     if (index == hiddenIndex) {
-      return widget.groupSeparatorBuilder(items[actualIndex]);
+      return Opacity(
+        opacity: widget.useStickyGroupSeparators ? 0 : 1,
+        child: _groupSeparatorBuilder(items[actualIndex]),
+      );
     }
 
     if (isSeparator) {
@@ -225,70 +371,86 @@ class _GroupedInfiniteListState<T, G> extends State<GroupedInfiniteList<T, G>> {
       final current = widget.groupBy(items[actualIndex]);
       final previous = widget.groupBy(items[actualIndex + (reverse ? 1 : -1)]);
       if (current != previous) {
-        return widget.groupSeparatorBuilder(items[actualIndex]);
+        return _groupSeparatorBuilder(items[actualIndex]);
       }
       return widget.separator;
     }
 
     // Item builder
     final item = items[actualIndex];
-    return widget.itemBuilder(context, item);
+    final joinIndex = isNegative ? -actualIndex - 1 : actualIndex;
+    final key = _keys.putIfAbsent(joinIndex, GlobalKey.new);
+    return KeyedSubtree(
+      key: key,
+      child: widget.itemBuilder(context, item),
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return CustomScrollView(
-      key: widget.key,
-      controller: widget.controller,
-      center: widget._centerKey,
-      reverse: widget.reverse,
-      anchor: widget.anchor,
-      cacheExtent: widget.cacheExtent,
-      clipBehavior: widget.clipBehavior,
-      dragStartBehavior: widget.dragStartBehavior,
-      keyboardDismissBehavior: widget.keyboardDismissBehavior,
-      physics: widget.physics,
-      primary: widget.primary,
-      restorationId: widget.restorationId,
-      scrollBehavior: widget.scrollBehavior,
-      scrollDirection: widget.scrollDirection,
-      slivers: [
-        if (widget.negativeSuffix != null)
-          SliverToBoxAdapter(
-            child: widget.negativeSuffix,
-          ),
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              return _itemBuilder(
-                context: context,
-                items: _negativeItems,
-                index: index,
-                isNegative: true,
-              );
-            },
-            childCount: widget.negativeItems.length * 2,
-          ),
-        ),
-        SliverList(
-          key: widget._centerKey,
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              return _itemBuilder(
-                context: context,
-                items: _positiveItems,
-                index: index,
-                isNegative: false,
-              );
-            },
-            childCount: widget.positiveItems.length * 2,
-          ),
-        ),
-        if (widget.suffix != null)
-          SliverToBoxAdapter(
-            child: widget.suffix,
-          ),
-      ],
+  Widget _stickyHeaderBuilder(int index) {
+    _groupHeaderKey ??= GlobalKey();
+
+    if (!widget.useStickyGroupSeparators || _isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      key: _groupHeaderKey,
+      child: _groupSeparatorBuilder(getElementAt(index)),
     );
+  }
+
+  void _scrollListener() {
+    _listBox ??= _key.currentContext?.findRenderObject() as RenderBox?;
+    final listPos = (_listBox?.localToGlobal(Offset.zero).dy ?? 0) +
+        widget.stickyHeaderPositionOffset;
+    _headerBox ??=
+        _groupHeaderKey?.currentContext?.findRenderObject() as RenderBox?;
+    final headerHeight =
+        (_headerBox?.size.height ?? 0) - widget.groupSeparatorPadding.vertical;
+    var max = double.negativeInfinity;
+    var topItemKey = widget.reverse
+        ? _positiveItems.length - 1
+        : _negativeItems.isEmpty
+            ? 0
+            : -_negativeItems.length;
+    for (final entry in _keys.entries) {
+      final key = entry.value;
+      if (_isListItemRendered(key)) {
+        final itemBox = key.currentContext!.findRenderObject()! as RenderBox;
+        // position of the item's top border inside the list view
+        final y = itemBox.localToGlobal(Offset(0, -listPos - headerHeight)).dy;
+        if (y <= headerHeight && y > max) {
+          topItemKey = entry.key;
+          max = y;
+        }
+      }
+    }
+
+    final index = topItemKey;
+    // print(index);
+    if (index != _topElementIndex) {
+      final curr = widget.groupBy(getElementAt(index));
+      final prev = widget.groupBy(getElementAt(_topElementIndex));
+
+      if (prev != curr) {
+        _topElementIndex = index;
+        _stickyGroupIndexStreamController.add(_topElementIndex);
+      }
+    }
+  }
+
+  T getElementAt(int index) {
+    if (index >= 0) {
+      return _positiveItems[index];
+    } else {
+      return _negativeItems[-index - 1];
+    }
+  }
+
+  /// Checks if the list item with the given [key] is currently rendered in the
+  /// view frame.
+  bool _isListItemRendered(GlobalKey<State<StatefulWidget>> key) {
+    return key.currentContext != null &&
+        key.currentContext!.findRenderObject() != null;
   }
 }

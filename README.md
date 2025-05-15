@@ -2,7 +2,7 @@
 
 [![Grouped Infinite List][pub_badge]][pub_link] [![License: MIT][license_badge]][license_link]
 
-Grouped Infinite ListView with items that can be scrolled infinitely in both directions. This widget use [CustomScrollView][custom_scroll_view_link] with two [SliverList][sliver_list_link] to achive this.
+Grouped Infinite ListView with items that can be scrolled infinitely in both directions. This widget use [CustomScrollView][custom_scroll_view_link] with two [SliverList][sliver_list_link] to achieve this.
 
 This package inspired by [grouped_list][grouped_list_link] package.
 
@@ -37,7 +37,7 @@ flutter packages get
 | `separator`                  | Widget that will be displayed between items                                                                                | no       | -               |
 | `groupComparator`            | Function to sort the list of groups                                                                                        | no       | -               |
 | `itemComparator`             | Function to sort the items inside a group                                                                                  | no       | -               |
-| `stickyHeaderPositionOffset` | Offset from the top of the screen at which sticky headers should stick. Usefull if you need your list scroll behind appBar | no       | 0               |
+| `stickyHeaderPositionOffset` | Offset from the top of the screen at which sticky headers should stick. Useful if you need your list scroll behind appBar | no       | 0               |
 
 **Also you can use Parameters from [CustomScrollView][custom_scroll_view_link]**
 

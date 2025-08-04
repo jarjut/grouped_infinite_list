@@ -2,6 +2,8 @@
 
 [![Grouped Infinite List][pub_badge]][pub_link] [![License: MIT][license_badge]][license_link]
 
+<img src="https://raw.githubusercontent.com/jarjut/grouped_infinite_list/refs/heads/assets/demo-1.gif" alt="Grouped Infinite List Example" height="400">
+
 Grouped Infinite ListView with items that can be scrolled infinitely in both directions. This widget use [CustomScrollView][custom_scroll_view_link] with two [SliverList][sliver_list_link] to achieve this.
 
 This package inspired by [grouped_list][grouped_list_link] package.

@@ -210,7 +210,7 @@ class _GroupedInfiniteListState<T, G> extends State<GroupedInfiniteList<T, G>> {
       alignment: Alignment.topCenter,
       children: [
         CustomScrollView(
-          controller: widget.controller,
+          controller: _controller,
           center: widget._centerKey,
           reverse: widget.reverse,
           anchor: widget.anchor,
